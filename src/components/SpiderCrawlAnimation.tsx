@@ -1,17 +1,10 @@
 import React, { useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 
-interface Node {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  connections: number[];
-}
-
-const SpiderCrawlAnimation: React.FC = () => {
+const SpiderCrawlAnimation = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
-  const nodesRef = useRef<Node[]>([]);
+  const nodesRef = useRef<any[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -21,98 +14,81 @@ const SpiderCrawlAnimation: React.FC = () => {
     if (!ctx) return;
 
     const resizeCanvas = () => {
-      canvas.width = canvas.offsetWidth;
-      canvas.height = canvas.offsetHeight;
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
     };
 
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
 
     // Initialize nodes
-    const nodeCount = 15;
+    const nodeCount = 50;
     nodesRef.current = Array.from({ length: nodeCount }, () => ({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
       vx: (Math.random() - 0.5) * 0.5,
       vy: (Math.random() - 0.5) * 0.5,
-      connections: []
+      radius: Math.random() * 3 + 1,
+      pulse: Math.random() * Math.PI * 2,
+      pulseSpeed: 0.02 + Math.random() * 0.02
     }));
 
-    // Create connections
-    nodesRef.current.forEach((node, i) => {
-      nodesRef.current.forEach((otherNode, j) => {
-        if (i !== j) {
-          const distance = Math.sqrt(
-            Math.pow(node.x - otherNode.x, 2) + Math.pow(node.y - otherNode.y, 2)
-          );
-          if (distance < 150 && node.connections.length < 3) {
-            node.connections.push(j);
-          }
-        }
-      });
-    });
-
-    const animate = (time: number) => {
+    const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+      
       // Update and draw nodes
       nodesRef.current.forEach((node, i) => {
         // Update position
         node.x += node.vx;
         node.y += node.vy;
-
+        
         // Bounce off edges
-        if (node.x <= 0 || node.x >= canvas.width) node.vx *= -1;
-        if (node.y <= 0 || node.y >= canvas.height) node.vy *= -1;
-
-        // Keep in bounds
-        node.x = Math.max(0, Math.min(canvas.width, node.x));
-        node.y = Math.max(0, Math.min(canvas.height, node.y));
-
+        if (node.x < 0 || node.x > canvas.width) node.vx *= -1;
+        if (node.y < 0 || node.y > canvas.height) node.vy *= -1;
+        
+        // Update pulse
+        node.pulse += node.pulseSpeed;
+        const pulseIntensity = Math.sin(node.pulse) * 0.5 + 0.5;
+        
+        // Draw node with glow
+        const gradient = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, node.radius * 3);
+        gradient.addColorStop(0, `rgba(0, 200, 150, ${0.8 * pulseIntensity})`);
+        gradient.addColorStop(0.5, `rgba(0, 200, 150, ${0.4 * pulseIntensity})`);
+        gradient.addColorStop(1, 'rgba(0, 200, 150, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius * 3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw core node
+        ctx.fillStyle = `rgba(0, 200, 150, ${0.9 * pulseIntensity})`;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, node.radius, 0, Math.PI * 2);
+        ctx.fill();
+        
         // Draw connections
-        node.connections.forEach(connectionIndex => {
-          const connectedNode = nodesRef.current[connectionIndex];
-          if (connectedNode) {
-            const gradient = ctx.createLinearGradient(
-              node.x, node.y, connectedNode.x, connectedNode.y
-            );
-            gradient.addColorStop(0, 'rgba(0, 200, 150, 0.3)');
-            gradient.addColorStop(1, 'rgba(58, 134, 255, 0.3)');
-
-            ctx.strokeStyle = gradient;
+        nodesRef.current.slice(i + 1).forEach(otherNode => {
+          const dx = node.x - otherNode.x;
+          const dy = node.y - otherNode.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          if (distance < 150) {
+            const opacity = (150 - distance) / 150 * 0.3;
+            ctx.strokeStyle = `rgba(58, 134, 255, ${opacity})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(node.x, node.y);
-            ctx.lineTo(connectedNode.x, connectedNode.y);
+            ctx.lineTo(otherNode.x, otherNode.y);
             ctx.stroke();
           }
         });
-
-        // Draw node with pulsing effect
-        const pulseScale = 1 + Math.sin(time * 0.005 + i) * 0.3;
-        const gradient = ctx.createRadialGradient(
-          node.x, node.y, 0,
-          node.x, node.y, 8 * pulseScale
-        );
-        gradient.addColorStop(0, 'rgba(0, 200, 150, 0.8)');
-        gradient.addColorStop(1, 'rgba(0, 200, 150, 0)');
-
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, 8 * pulseScale, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Inner glow
-        ctx.fillStyle = '#00c896';
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, 3, 0, Math.PI * 2);
-        ctx.fill();
       });
-
+      
       animationRef.current = requestAnimationFrame(animate);
     };
 
-    animate(0);
+    animate();
 
     return () => {
       window.removeEventListener('resize', resizeCanvas);
@@ -123,10 +99,13 @@ const SpiderCrawlAnimation: React.FC = () => {
   }, []);
 
   return (
-    <canvas
+    <motion.canvas
       ref={canvasRef}
-      className="absolute inset-0 w-full h-full pointer-events-none"
+      className="absolute inset-0 pointer-events-none"
       style={{ opacity: 0.6 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 0.6 }}
+      transition={{ duration: 2 }}
     />
   );
 };
